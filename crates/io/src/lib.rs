@@ -5,6 +5,7 @@
 /// 動作確認用の関数
 pub fn hello_io() {
     println!("Hello from io crate!");
+    let _unused = 42; // Fixed: added underscore
 }
 
 #[cfg(test)]
