@@ -1,5 +1,5 @@
 ---
-name: implement-util
+name: implement
 description: 仕様に基づき、TDD（テスト駆動開発）を用いて Rust のユーティリティ機能を実装する。テスト作成、実装、品質ガード、および `retro` による振り返りまでを一貫して行う。
 ---
 
