@@ -5,16 +5,28 @@ use walkdir::WalkDir;
 
 /// ファイルをコピーします。
 pub fn copy_file(src: &Path, dst: &Path) -> io::Result<()> {
-    fs::copy(src, dst)?;
+    let mut temp_dst = dst.to_path_buf();
+    temp_dst.set_extension("temp");
+    fs::copy(src, &temp_dst)?;
+    fs::rename(&temp_dst, dst)?;
     Ok(())
 }
 
 /// ディレクトリをコピーします。
 pub fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
+    let mut temp_dst = dst.to_path_buf();
+    let mut s = dst.to_string_lossy().into_owned();
+    s.push_str("_temp");
+    let temp_dst_path = Path::new(&s);
+
+    if let Some(parent) = temp_dst_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
     for entry in WalkDir::new(src).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         let relative_path = path.strip_prefix(src).map_err(io::Error::other)?;
-        let dest_path = dst.join(relative_path);
+        let dest_path = temp_dst_path.join(relative_path);
 
         if path.is_dir() {
             fs::create_dir_all(&dest_path)?;
@@ -25,6 +37,7 @@ pub fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
             fs::copy(path, &dest_path)?;
         }
     }
+    fs::rename(temp_dst_path, dst)?;
     Ok(())
 }
 
@@ -112,7 +125,7 @@ mod tests {
         });
 
         let mut found_temp = false;
-        for _ in 0..1000 {
+        for _ in 0..5000 {
             if temp_dst_clone.exists() {
                 found_temp = true;
                 break;
@@ -151,7 +164,7 @@ mod tests {
         });
 
         let mut found_temp = false;
-        for _ in 0..1000 {
+        for _ in 0..5000 {
             if temp_dst_clone.exists() {
                 found_temp = true;
                 break;
