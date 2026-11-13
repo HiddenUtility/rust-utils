@@ -34,6 +34,9 @@ mod tests {
     use std::fs::{self, File};
     use std::io::Write;
     use tempfile::tempdir;
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::Duration;
 
     #[test]
     fn test_copy_file_should_work_successfully() {
@@ -85,5 +88,81 @@ mod tests {
         assert!(dst_file2_path.exists());
         let content2 = fs::read_to_string(&dst_file2_path).unwrap();
         assert_eq!(content2, "file2 content\n");
+    }
+
+    #[test]
+    fn test_copy_file_uses_temp_extension() {
+        let dir = tempdir().unwrap();
+        let src_path = dir.path().join("src.txt");
+        let dst_path = dir.path().join("dst.txt");
+        let temp_dst_path = dst_path.with_extension("temp");
+
+        let mut file = File::create(&src_path).unwrap();
+        writeln!(file, "hello world").unwrap();
+
+        let src_path = Arc::new(src_path);
+        let dst_path = Arc::new(dst_path);
+        let temp_dst_path = Arc::new(temp_dst_path);
+
+        let src_clone = Arc::clone(&src_path);
+        let dst_clone = Arc::clone(&dst_path);
+        let temp_dst_clone = Arc::clone(&temp_dst_path);
+        let handle = thread::spawn(move || {
+            copy_file(&src_clone, &dst_clone).expect("copy_file failed");
+        });
+
+        let mut found_temp = false;
+        for _ in 0..1000 {
+            if temp_dst_clone.exists() {
+                found_temp = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        assert!(found_temp, "Temporary file was not found during copy");
+        handle.join().unwrap();
+
+        assert!(dst_path.exists());
+        assert!(!temp_dst_path.exists());
+    }
+
+    #[test]
+    fn test_copy_dir_uses_temp_suffix() {
+        let dir = tempdir().unwrap();
+        let src_dir = dir.path().join("src_dir");
+        let dst_dir = dir.path().join("dst_dir");
+        let temp_dst_path = dir.path().join("dst_dir_temp");
+
+        fs::create_dir(&src_dir).unwrap();
+        let file1_path = src_dir.join("file1.txt");
+        let mut file1 = File::create(&file1_path).unwrap();
+        writeln!(file1, "file1 content").unwrap();
+
+        let src_dir = Arc::new(src_dir);
+        let dst_dir = Arc::new(dst_dir);
+        let temp_dst_path = Arc::new(temp_dst_path);
+
+        let src_clone = Arc::clone(&src_dir);
+        let dst_clone = Arc::clone(&dst_dir);
+        let temp_dst_clone = Arc::clone(&temp_dst_path);
+        let handle = thread::spawn(move || {
+            copy_dir(&src_clone, &dst_clone).expect("copy_dir failed");
+        });
+
+        let mut found_temp = false;
+        for _ in 0..1000 {
+            if temp_dst_clone.exists() {
+                found_temp = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        assert!(found_temp, "Temporary directory was not found during copy");
+        handle.join().unwrap();
+
+        assert!(dst_dir.exists());
+        assert!(!temp_dst_path.exists());
     }
 }
