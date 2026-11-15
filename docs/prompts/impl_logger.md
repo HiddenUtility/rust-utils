@@ -1,3 +1,6 @@
+implement を使用してください．
+内容は下記を参照してください．
+
 # Rust Text Logger 実装仕様書
 
 ## 1. 目的
