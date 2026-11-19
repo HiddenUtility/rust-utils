@@ -1,5 +1,4 @@
 
-.codex/config.toml
 target/
 
 *.log
