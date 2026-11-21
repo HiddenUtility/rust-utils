@@ -1,0 +1,12 @@
+[package]
+name = "file_directory_copier"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["fs", "io-util", "rt", "rt-multi-thread"] }
+regex = "1"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
