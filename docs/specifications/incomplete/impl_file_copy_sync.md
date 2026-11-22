@@ -1,8 +1,8 @@
-# Rust File and Directory Copier — Codex Implementation Specification
+# Rust File and Directory Copier (Synchronous) — Codex Implementation Specification
 
 ## 1. プロジェクト概要
 
-Rustでファイルおよびディレクトリを安全にコピー・移動するライブラリクレートを実装する。
+Rustでファイルおよびディレクトリを安全にコピー・移動する同期型ライブラリクレートを実装する。
 
 以下の3種類のオブジェクトを提供する。
 
@@ -10,14 +10,14 @@ Rustでファイルおよびディレクトリを安全にコピー・移動す�
 2. `DirectoryCopier`：ディレクトリの再帰的なコピー・移動
 3. `FilteredDirectoryCopier`：正規表現による除外設定が可能なディレクトリのコピー・移動
 
-各オブジェクトについて、同期版と非同期版のAPIを提供する。
+本仕様書では、すべてのファイル操作を同期処理として実装する。
 
 最も重要な要件は、コピー途中でエラーが発生した場合に、既存の出力データを可能な限り維持することである。
 
 ### 1.1 基本方針
 
 - Rust Edition 2024を使用する。
-- 非同期処理にはTokioを使用する。
+- 同期ファイル操作には `std::fs` を使用する。
 - 外部クレートは必要最小限にする。
 - MIT、Apache-2.0、BSDなどの利用可能なライセンスを優先する。
 - Pure Rustのクレートを優先する。
@@ -26,7 +26,7 @@ Rustでファイルおよびディレクトリを安全にコピー・移動す�
 - 公開APIにはRustdoc形式のdocstringを記述する。
 - コメントアウトによる説明は極力避け、docstringで仕様を説明する。
 - `src/README.md` を作成し、簡単なドキュメントとサンプルコードを記述する。
-- 同期版は `std::fs`、非同期版は `tokio::fs` を基本として実装する。
+- 非同期処理に関するAPIや依存クレートは実装しない。
 
 ## 2. クレート構成
 
@@ -44,11 +44,7 @@ file_directory_copier/
 │   ├── directory_copier.rs
 │   ├── filtered_directory_copier.rs
 │   ├── options.rs
-│   ├── sync/
-│   │   ├── mod.rs
-│   │   ├── file.rs
-│   │   └── directory.rs
-│   └── asynchronous/
+│   └── sync/
 │       ├── mod.rs
 │       ├── file.rs
 │       └── directory.rs
@@ -56,7 +52,6 @@ file_directory_copier/
     ├── file_copier_tests.rs
     ├── directory_copier_tests.rs
     ├── filtered_directory_tests.rs
-    ├── async_tests.rs
     └── error_tests.rs
 ```
 
@@ -70,7 +65,6 @@ file_directory_copier/
 
 | クレート | 用途 | ライセンス方針 |
 |---|---|---|
-| tokio | 非同期ファイル操作 | MIT |
 | regex | 除外パターンの正規表現 | MIT / Apache-2.0 |
 
 ### 3.2 開発用クレート
@@ -79,17 +73,9 @@ file_directory_copier/
 |---|---|---|
 | tempfile | テスト用一時ディレクトリ | MIT / Apache-2.0 |
 
-`Cargo.toml` では必要なTokio featureだけを有効にする。
+`Cargo.toml` には必要な依存クレートのみを追加する。
 
-少なくとも以下を検討すること。
-
-- `fs`
-- `io-util`
-- `macros`
-- `rt`
-- `rt-multi-thread`
-
-実際に使用するAPIに応じて調整すること。
+Tokioなどの非同期処理用クレートは追加してはならない。
 
 依存クレートを追加する場合は、ライセンスと必要性を確認すること。
 
@@ -154,9 +140,9 @@ file_directory_copier/
 例：
 
 ```text
-data.txt      → data.txt.temp
+data.txt       → data.txt.temp
 archive.tar.gz → archive.tar.gz.temp
-data          → data.temp
+data           → data.temp
 ```
 
 拡張子を置き換えてはならない。
@@ -170,8 +156,8 @@ data          → data.temp
 例：
 
 ```text
-backup       → backup_temp
-project      → project_temp
+backup  → backup_temp
+project → project_temp
 ```
 
 ### 4.6 一時データの削除
@@ -248,12 +234,6 @@ impl FileCopier {
 
     /// コピー完了後に元ファイルを削除する。
     pub fn move_file(&self) -> std::io::Result<()>;
-
-    /// 非同期でコピーする。
-    pub async fn copy_async(&self) -> std::io::Result<()>;
-
-    /// 非同期でコピーし、完了後に元ファイルを削除する。
-    pub async fn move_file_async(&self) -> std::io::Result<()>;
 }
 ```
 
@@ -298,7 +278,7 @@ destination/
 
 ### 5.8 移動処理
 
-`move_file` および `move_file_async` は、コピーと最終出力先へのリネームが成功した後に元ファイルを削除する。
+`move_file` は、コピーと最終出力先へのリネームが成功した後に元ファイルを削除する。
 
 元ファイルの削除に失敗した場合はエラーを返す。
 
@@ -361,12 +341,6 @@ impl DirectoryCopier {
 
     /// コピー完了後に元ディレクトリを削除する。
     pub fn move_dir(&self) -> std::io::Result<()>;
-
-    /// 非同期でコピーする。
-    pub async fn copy_async(&self) -> std::io::Result<()>;
-
-    /// 非同期でコピーし、完了後に元ディレクトリを削除する。
-    pub async fn move_dir_async(&self) -> std::io::Result<()>;
 }
 ```
 
@@ -438,7 +412,7 @@ destination/backup_temp
 
 ### 6.9 移動処理
 
-`move_dir` および `move_dir_async` は、コピーと最終出力先へのリネームが成功した後に元ディレクトリを削除する。
+`move_dir` は、コピーと最終出力先へのリネームが成功した後に元ディレクトリを削除する。
 
 削除には再帰削除を使用する。
 
@@ -608,13 +582,11 @@ backup/
 
 ```rust
 impl FilteredDirectoryCopier {
+    /// 除外設定に従ってディレクトリをコピーする。
     pub fn copy(&self) -> std::io::Result<()>;
 
+    /// 除外設定に従ってコピーし、完了後に元ディレクトリを削除する。
     pub fn move_dir(&self) -> std::io::Result<()>;
-
-    pub async fn copy_async(&self) -> std::io::Result<()>;
-
-    pub async fn move_dir_async(&self) -> std::io::Result<()>;
 }
 ```
 
@@ -622,40 +594,58 @@ impl FilteredDirectoryCopier {
 
 ただし、コピー対象の判定に除外設定を適用する。
 
-## 8. 非同期APIの実装仕様
+## 8. 同期処理の実装仕様
 
 ### 8.1 基本方針
 
-3種類すべてのオブジェクトに非同期APIを提供する。
+すべてのファイル操作を同期処理として実装する。
 
-同期版と非同期版で、処理結果・エラー条件・コピー対象の判定に違いがあってはならない。
+ファイル操作にはRust標準ライブラリの `std::fs` を使用する。
 
-### 8.2 使用するAPI
+以下の処理を同期的に実行する。
 
-| 処理 | 同期版 | 非同期版 |
-|---|---|---|
-| ファイル読み書き | std::fs | tokio::fs |
-| ディレクトリ作成 | std::fs | tokio::fs |
-| ディレクトリ走査 | std::fs::read_dir | tokio::fs::read_dir |
-| メタデータ取得 | std::fs | tokio::fs |
-| ファイル削除 | std::fs | tokio::fs |
-| ディレクトリ削除 | std::fs | tokio::fs |
-| リネーム | std::fs | tokio::fs |
-| シンボリックリンク作成 | OS標準API | OS標準API |
+| 処理 | 使用API |
+|---|---|
+| ファイル読み書き | `std::fs` |
+| ディレクトリ作成 | `std::fs::create_dir_all` |
+| ディレクトリ走査 | `std::fs::read_dir` |
+| メタデータ取得 | `std::fs` |
+| ファイル削除 | `std::fs::remove_file` |
+| ディレクトリ削除 | `std::fs::remove_dir_all` |
+| リネーム | `std::fs::rename` |
+| シンボリックリンク作成 | OS標準API |
 
-シンボリックリンク作成については、Tokioに必要な移植性のあるAPIがない場合、標準ライブラリのOS別APIを使用してよい。
+シンボリックリンク作成には、OSごとの標準ライブラリAPIを使用する。
 
-通常ファイルの内容をコピーする処理で、非同期版から同期版のファイル読み書きを呼び出してはならない。
+Windowsではファイル用・ディレクトリ用のシンボリックリンクAPIを適切に使い分けること。
 
-非同期版は、可能な限りTokioのファイル操作APIを利用する。
+### 8.2 ファイルコピー
 
-### 8.3 非同期処理の注意点
+通常ファイルのコピーには `std::fs::copy` または `std::fs::File` と `std::io` を使用する。
 
-- `async fn` の内部で同期版のコピー関数をそのまま呼び出さない。
-- 大きなファイルのコピーでTokioの実行スレッドを長時間ブロックしない。
-- TokioのファイルAPIを利用する。
-- 再帰処理も非同期処理として実装する。
-- 非同期処理内のエラー処理と一時データ削除も確実に実施する。
+コピー先は必ず一時ファイルとする。
+
+コピー完了後に、共通仕様に従って最終出力先に反映する。
+
+### 8.3 ディレクトリコピー
+
+`std::fs::read_dir` を使用してディレクトリを走査する。
+
+サブディレクトリについては再帰的にコピー処理を実行する。
+
+各エントリの種類は `symlink_metadata` を使用して判定する。
+
+シンボリックリンクについてはリンク先をたどらないこと。
+
+### 8.4 エラー処理と後始末
+
+各ファイル操作のエラーを適切に処理する。
+
+コピー処理に失敗した場合は、一時データを可能な限り削除する。
+
+既存の出力先がある場合は、バックアップを復元する。
+
+後始末のエラーによって元のエラーを隠してはならない。
 
 ## 9. コピー対象の種類と制約
 
@@ -682,7 +672,7 @@ impl FilteredDirectoryCopier {
 
 実ファイルシステムを汚さないよう、`tempfile` を利用して一時ディレクトリ内で実施する。
 
-同期版と非同期版の両方をテストする。
+すべてのテストは同期APIを対象とする。
 
 ### 10.1 FileCopierのテスト
 
@@ -734,20 +724,7 @@ impl FilteredDirectoryCopier {
 | 9 | ファイル除外 | 親ディレクトリは残る |
 | 10 | シンボリックリンク | リンク自体を除外判定する |
 
-### 10.4 非同期テスト
-
-上記の各テストについて、非同期APIでも同等の結果になることを確認する。
-
-Tokioのテストマクロを使用する。
-
-```rust
-#[tokio::test]
-async fn test_file_copy_async() {
-    // テストコード
-}
-```
-
-### 10.5 異常系テスト
+### 10.4 異常系テスト
 
 以下の異常系を必ず確認する。
 
@@ -774,7 +751,7 @@ async fn test_file_copy_async() {
 
 - クレートの概要
 - 提供する3種類のオブジェクト
-- 同期版と非同期版の違い
+- 同期処理の特徴
 - インストール方法
 - 基本的な使用例
 - ライセンス
@@ -786,8 +763,9 @@ async fn test_file_copy_async() {
 - 各モジュールの役割
 - 構造体の概要
 - メソッドの概要
-- 同期版の使用例
-- 非同期版の使用例
+- FileCopierの使用例
+- DirectoryCopierの使用例
+- FilteredDirectoryCopierの使用例
 - 除外設定の使用例
 - コピーと移動の違い
 - 一時ファイル・一時ディレクトリの動作
@@ -806,7 +784,6 @@ async fn test_file_copy_async() {
 - コピーと移動の違い
 - 一時ファイル・一時ディレクトリの扱い
 - 除外パターンの適用対象
-- 非同期APIの使用方法
 
 コード内のコメントは必要最小限とし、実装の説明をdocstringに重複して書かないこと。
 
@@ -836,16 +813,17 @@ use file_directory_copier::{
 1. `lib.rs` にすべての処理を書くこと。
 2. コピー途中で既存の出力先を削除すること。
 3. コピー失敗時に元データを削除すること。
-4. 非同期APIから同期版のコピー処理を直接呼び出すこと。
-5. ディレクトリコピーでシンボリックリンクを無条件にたどること。
-6. 除外正規表現をコピー処理中に毎回コンパイルすること。
-7. ディレクトリ除外後に、その配下を走査すること。
-8. エラー発生時に一時データの後始末を行わないこと。
-9. 後始末のエラーによって元のエラーを隠すこと。
-10. `unwrap()` や `expect()` を通常のファイル操作処理で使用すること。
-11. `unsafe` を安易に使用すること。
-12. 不要な外部クレートを追加すること。
-13. 仕様にないメタデータ維持を必須要件として実装すること。
+4. ディレクトリコピーでシンボリックリンクを無条件にたどること。
+5. 除外正規表現をコピー処理中に毎回コンパイルすること。
+6. ディレクトリ除外後に、その配下を走査すること。
+7. エラー発生時に一時データの後始末を行わないこと。
+8. 後始末のエラーによって元のエラーを隠すこと。
+9. `unwrap()` や `expect()` を通常のファイル操作処理で使用すること。
+10. `unsafe` を安易に使用すること。
+11. 不要な外部クレートを追加すること。
+12. 仕様にないメタデータ維持を必須要件として実装すること。
+13. Tokioなどの非同期処理用クレートを追加すること。
+14. 非同期APIを公開すること。
 
 ## 15. 実装手順
 
@@ -871,8 +849,6 @@ use file_directory_copier::{
 - コンストラクタを実装する。
 - 同期コピーを実装する。
 - 同期移動を実装する。
-- 非同期コピーを実装する。
-- 非同期移動を実装する。
 - シンボリックリンク対応を実装する。
 - テストを実施する。
 
@@ -883,7 +859,6 @@ use file_directory_copier::{
 - 空ディレクトリ対応を実装する。
 - シンボリックリンク対応を実装する。
 - 同期移動を実装する。
-- 非同期処理を実装する。
 - テストを実施する。
 
 ### Step 5：FilteredDirectoryCopier
@@ -893,7 +868,6 @@ use file_directory_copier::{
 - メソッドチェーンを実装する。
 - ファイル除外を実装する。
 - ディレクトリ除外を実装する。
-- 同期版と非同期版を実装する。
 - テストを実施する。
 
 ### Step 6：ドキュメント
@@ -922,16 +896,10 @@ cargo doc --no-deps
 
 - [ ] FileCopierの同期コピーが動作する。
 - [ ] FileCopierの同期移動が動作する。
-- [ ] FileCopierの非同期コピーが動作する。
-- [ ] FileCopierの非同期移動が動作する。
 - [ ] DirectoryCopierの同期コピーが動作する。
 - [ ] DirectoryCopierの同期移動が動作する。
-- [ ] DirectoryCopierの非同期コピーが動作する。
-- [ ] DirectoryCopierの非同期移動が動作する。
 - [ ] FilteredDirectoryCopierの同期コピーが動作する。
 - [ ] FilteredDirectoryCopierの同期移動が動作する。
-- [ ] FilteredDirectoryCopierの非同期コピーが動作する。
-- [ ] FilteredDirectoryCopierの非同期移動が動作する。
 - [ ] 正規表現によるファイル除外が動作する。
 - [ ] 正規表現によるディレクトリ除外が動作する。
 - [ ] 空ディレクトリがコピーされる。
@@ -940,11 +908,12 @@ cargo doc --no-deps
 - [ ] コピー失敗時に元データが維持される。
 - [ ] コピー失敗時に一時データが可能な限り削除される。
 - [ ] 移動処理では出力先確定後に元データが削除される。
-- [ ] 同期版と非同期版の動作が一致する。
 - [ ] すべてのテストが成功する。
 - [ ] Clippyで警告が発生しない。
 - [ ] Rustdocが正常に生成される。
 - [ ] README.mdが作成されている。
+- [ ] 非同期処理用の依存クレートが追加されていない。
+- [ ] 非同期APIが公開されていない。
 
 ## 17. Codexへの最終指示
 
@@ -970,4 +939,4 @@ cargo doc --no-deps
 6. Rustdocの生成結果
 7. 未実装項目や既知の制約
 
-仕様に記載された機能を省略せず、同期版・非同期版の両方を完成させること。
+仕様に記載された同期版の機能を省略せず、すべて完成させること。
